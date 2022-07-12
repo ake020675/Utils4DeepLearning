@@ -19,51 +19,6 @@ from pathlib import Path
 from utils.augmentations import Albumentations, augment_hsv, copy_paste, letterbox, mixup, random_perspective
 
 
-def process_batch(detections, labels, iou_thres, device='cuda:0'):
-    """
-    Modified from val.process_batch
-    Return correct predictions matrix. Both sets of boxes are in (x1, y1, x2, y2) format.
-    Arguments:
-        detections (Array[N, 6]), x1, y1, x2, y2, conf, class
-        labels (Array[M, 5]), class, x1, y1, x2, y2
-        iou_thres: iou threshold
-        device:
-    Returns:
-        correct (Array[N, 10]), for 10 IoU levels
-    """
-    correct = torch.zeros(detections.shape[0], 1, dtype=torch.bool, device=device)
-    iou = box_iou(labels[:, 1:], detections[:, :4])
-    x = torch.where((iou >= iou_thres) & (labels[:, 0:1] == detections[:, 5]))  # IoU above threshold and classes match
-    if x[0].shape[0]:
-        matches = torch.cat((torch.stack(x, 1), iou[x[0], x[1]][:, None]), 1).cpu().numpy()  # [label, detection, iou]
-        if x[0].shape[0] > 1:
-            matches = matches[matches[:, 2].argsort()[::-1]]
-            matches = matches[np.unique(matches[:, 1], return_index=True)[1]]
-            # matches = matches[matches[:, 2].argsort()[::-1]]
-            matches = matches[np.unique(matches[:, 0], return_index=True)[1]]
-        matches = torch.from_numpy(matches).to(device)
-        correct[matches[:, 1].long()] = matches[:, 2:3] >= iou_thres
-    return correct
-
-
-@torch.no_grad()
-def inference_detector(model, im, im0s, conf_thres=0.5, iou_thres=0.3):
-    im = torch.from_numpy(im).to('cuda:0')
-    im = im.float()  # uint8 to fp16/32
-    im /= 255  # 0 - 255 to 0.0 - 1.0
-    if len(im.shape) == 3:
-        im = im[None]  # expand for batch dim
-    pred = model(im)
-
-    # NMS
-    pred = non_max_suppression(pred, conf_thres, iou_thres, max_det=10)
-
-    # Process predictions
-    for i, det in enumerate(pred):  # per image
-        det[:, :4] = scale_coords(im.shape[2:], det[:, :4], im0s.shape).round()
-    return det
-
-
 def check_labels(img_paths, label_paths, weights, task='val'):
     """
     todo:使用已训练模型，对数据集进行推理，根据推理结果检查标注中的漏标/错标
