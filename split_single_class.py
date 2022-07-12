@@ -1,5 +1,5 @@
 # -*-coding:utf-8-*-
-# split xml and images of multiple class to dir of single class
+# split xml and images of multiple classes to single class
 
 import shutil
 import glob
